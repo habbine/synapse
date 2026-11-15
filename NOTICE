@@ -1,0 +1,11 @@
+SYNAPSE
+Copyright 2026 Habbine Estelle KIM and Ishan SINHA (Team 3S, Synapse Space Systems)
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+This product embeds data from the NASA Open Science Data Repository
+(Environmental Data Application, Rodent Research 1) and reads the NOAA
+Space Weather Prediction Center GOES proton flux feed at run time.
+See THIRD-PARTY.md for their terms.
+
+Not a NASA product and not endorsed by NASA.

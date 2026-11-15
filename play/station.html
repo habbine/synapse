@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>SYNAPSE · Station drill</title>
+<meta name="description" content="A fictitious game: float through a space station and answer its alarms.">
+<style>
+:root{--bg:#04060C;--panel:#111726;--line:#243049;--text:#E9EEF8;--dim:#B8C4DC;--faint:#8493B2;--accent:#5CD2FF;--ok:#3DDC97;--watch:#F0B429;--alert:#FF4D4D}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px;line-height:1.5}
+.wrap{max-width:900px;margin:0 auto;padding:10px}
+.hud{display:flex;gap:8px 16px;flex-wrap:wrap;align-items:center;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);font-size:13px}
+.hud b{display:block;font-size:10px;letter-spacing:.1em;color:var(--faint)}
+.hud span{font-weight:700;font-variant-numeric:tabular-nums}
+#hNext{color:var(--accent)}
+.tag{margin-left:auto;font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--watch);border:1px dashed var(--watch);border-radius:7px;padding:3px 8px}
+#view{position:relative;margin-top:10px}
+canvas{display:block;width:100%;height:auto;border-radius:14px;border:1px solid var(--line);background:#02040A;touch-action:none}
+#over{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(3,6,12,.86);border-radius:14px;overflow:auto}
+#over>div{max-width:620px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+h1{font-size:21px;margin:0 0 6px}h2{font-size:15px;margin:12px 0 4px}
+p{margin:6px 0;color:var(--dim)}.small{font-size:12.5px;color:var(--faint)}
+button{font:inherit;color:var(--text);background:#0C1322;border:1px solid var(--line);border-radius:11px;padding:10px 15px;min-height:46px;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+button.primary{background:var(--accent);border-color:var(--accent);color:#06101a;font-weight:700}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+#pad{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px}
+#dpad{display:grid;grid-template-columns:repeat(3,54px);grid-template-rows:repeat(2,50px);gap:5px}
+#dpad button{padding:0;min-height:50px;font-size:18px}
+#bAct{min-width:130px;min-height:64px;font-size:16px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin-top:6px}
+td,th{padding:6px 7px;border-bottom:1px solid var(--line);text-align:left}
+th{font-size:10.5px;letter-spacing:.07em;color:var(--faint)}
+.good{color:var(--ok)}.mid{color:var(--watch)}.bad{color:var(--alert)}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p style="margin:0 0 8px;font-size:13px"><a href="../index.html">← Back to SYNAPSE</a></p>
+  <div class="hud" role="status" aria-live="polite">
+    <div><b>NEXT STEP</b><span id="hNext">Read the briefing</span></div>
+    <div><b>CABIN PRESSURE</b><span id="hPres">100%</span></div>
+    <div><b>AIR</b><span id="hAir">100%</span></div>
+    <div><b>MASK</b><span id="hMask">off</span></div>
+    <div><b>ALARM</b><span id="hRound">0 / 3</span></div>
+    <span class="tag">FICTITIOUS TRAINING</span>
+  </div>
+  <div id="view">
+    <canvas id="cv" width="800" height="440" tabindex="0" aria-label="Top view of a space station with five modules. You are the bright dot."></canvas>
+    <div id="over"><div id="overBody"></div></div>
+  </div>
+  <div id="pad" aria-label="Touch controls">
+    <div id="dpad">
+      <span></span><button type="button" data-k="up" aria-label="Thrust up">▲</button><span></span>
+      <button type="button" data-k="left" aria-label="Thrust left">◀</button><button type="button" data-k="down" aria-label="Thrust down">▼</button><button type="button" data-k="right" aria-label="Thrust right">▶</button>
+    </div>
+    <div class="small" style="flex:1;text-align:center">Arrow keys or W A S D to push off. Space to act. You keep drifting until you push the other way.</div>
+    <button type="button" id="bAct" class="primary">ACT</button>
+  </div>
+  <p class="small">AI-assisted design and code. Sound starts after your first tap and comes from the side the alarm is on: use both speakers or headphones.</p>
+</div>
+<script>
+'use strict';
+/* SYNAPSE, station drill. One file, no dependencies, nothing stored or sent.
+   You float through five modules. An alarm sounds from where the trouble is; you hear which
+   side it is on. Get there, with the right kit, and make the first move. The station layout,
+   the timings and the simplified moves are invented for training. */
+var $ = function(id){ return document.getElementById(id); };
+var cv = $('cv'), g = cv.getContext('2d'), W = 800, H = 440;
+var MODS = {
+  node: { n: 'Node',        x: 340, y: 160, w: 120, h: 120 },
+  lab:  { n: 'Laboratory',  x: 120, y: 170, w: 220, h: 100, door: { x: 340, y: 220, vert: true } },
+  hab:  { n: 'Habitat',     x: 460, y: 170, w: 220, h: 100, door: { x: 460, y: 220, vert: true } },
+  lock: { n: 'Airlock',     x: 350, y: 30,  w: 100, h: 130, door: { x: 400, y: 160, vert: false } },
+  serv: { n: 'Service',     x: 350, y: 280, w: 100, h: 130, door: { x: 400, y: 280, vert: false } }
+};
+var LOCKERS = [{ x: 372, y: 192 }, { x: 150, y: 196 }, { x: 650, y: 196 }];
+var KINDS = {
+  fire: { name: 'Fire', col: '#FF4D4D', needMask: true,  say: 'Emergency. Fire in the ' },
+  dp:   { name: 'Rapid depressurisation', col: '#FF8A3D', needMask: false, say: 'Emergency. Rapid depress in the ' },
+  tox:  { name: 'Toxic atmosphere', col: '#C9A7FF', needMask: true,  say: 'Emergency. Toxic atmosphere in the ' }
+};
+var G = { run: false, keys: {}, p: { x: 400, y: 220, vx: 0, vy: 0 }, mask: false, pres: 100, air: 100, ev: null, round: 0, log: [], hold: 0, t: 0, closed: {}, wait: 0, order: [], stars: [], thrust: 0, audio: null, siren: null };
+for(var i = 0; i < 90; i++) G.stars.push([Math.random() * W, Math.random() * H, Math.random() * 1.4 + .3]);
+
+/* ---------- sound, placed left or right of you ---------- */
+function ctx(){ var AC = window.AudioContext || window.webkitAudioContext; if(!AC) return null; G.audio = G.audio || new AC(); if(G.audio.state === 'suspended' && G.audio.resume) G.audio.resume(); return G.audio; }
+function blip(freq, dur, type, pan, vol){
+  try{ var c = ctx(); if(!c) return; var o = c.createOscillator(), a = c.createGain(), t = c.currentTime + .01;
+    o.type = type || 'sine'; o.frequency.value = freq; a.gain.setValueAtTime(.0001, t); a.gain.exponentialRampToValueAtTime(vol || .15, t + .02); a.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    var out = a; if(c.createStereoPanner){ var sp = c.createStereoPanner(); sp.pan.value = pan || 0; a.connect(sp); out = sp; }
+    o.connect(a); out.connect(c.destination); o.start(t); o.stop(t + dur + .03);
+  }catch(e){}
+}
+function sirenStart(){
+  try{ var c = ctx(); if(!c || G.siren) return; var o = c.createOscillator(), a = c.createGain(), l = c.createOscillator(), lg = c.createGain();
+    o.type = 'sawtooth'; o.frequency.value = 700; l.frequency.value = 1.6; lg.gain.value = 210; l.connect(lg); lg.connect(o.frequency);
+    a.gain.value = .0001; var sp = c.createStereoPanner ? c.createStereoPanner() : null;
+    o.connect(a); if(sp){ a.connect(sp); sp.connect(c.destination); } else a.connect(c.destination);
+    o.start(); l.start(); G.siren = { o: o, l: l, a: a, sp: sp };
+  }catch(e){}
+}
+function sirenUpdate(){
+  if(!G.siren || !G.ev) return;
+  var dx = G.ev.x - G.p.x, dy = G.ev.y - G.p.y, d = Math.sqrt(dx * dx + dy * dy);
+  try{ var c = G.audio, t = c.currentTime;
+    G.siren.a.gain.setTargetAtTime(Math.max(.02, .16 * (1 - Math.min(1, d / 520))), t, .08);
+    if(G.siren.sp) G.siren.sp.pan.setTargetAtTime(Math.max(-1, Math.min(1, dx / 260)), t, .08);
+  }catch(e){}
+}
+function sirenStop(){ try{ if(G.siren){ G.siren.o.stop(); G.siren.l.stop(); } }catch(e){} G.siren = null; }
+function say(text){ try{ if(!('speechSynthesis' in window)) return; window.speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(text); u.lang = 'en-US'; window.speechSynthesis.speak(u); }catch(e){} }
+
+/* ---------- where you may float ---------- */
+function inRect(m, x, y, pad){ return x >= m.x + pad && x <= m.x + m.w - pad && y >= m.y + pad && y <= m.y + m.h - pad; }
+function modAt(x, y){ for(var k in MODS) if(inRect(MODS[k], x, y, 0)) return k; return null; }
+function free(x, y){
+  var r = 9, k;
+  for(k in MODS) if(inRect(MODS[k], x, y, r)) return true;
+  for(k in MODS){ var d = MODS[k].door; if(!d || G.closed[k]) continue;                 /* an open hatch is a short passage */
+    if(d.vert ? (Math.abs(x - d.x) <= r + 2 && Math.abs(y - d.y) <= 13) : (Math.abs(y - d.y) <= r + 2 && Math.abs(x - d.x) <= 13)) return true; }
+  return false;
+}
+
+/* ---------- alarms ---------- */
+function startAlarm(kind, where){
+  var m = MODS[where], k = KINDS[kind];
+  G.ev = { kind: kind, where: where, x: m.x + m.w * (.3 + Math.random() * .4), y: m.y + m.h * (.3 + Math.random() * .4), t0: G.t, done: false };
+  if(kind !== 'fire'){ G.ev.x = m.x + m.w / 2; G.ev.y = m.y + m.h / 2; }
+  G.round++; G.hold = 0; sirenStart(); say(k.say + m.n + '.');
+}
+function nextStep(){
+  var e = G.ev; if(!e) return G.round >= 3 ? 'Drill complete' : 'Carry on. Wait for an alarm.';
+  var m = MODS[e.where], here = modAt(G.p.x, G.p.y);
+  if(KINDS[e.kind].needMask && !G.mask) return 'Get a mask from a green locker';
+  if(e.kind === 'fire') return dist(G.p, e) < 34 ? 'Hold ACT to put it out' : 'Go to the fire in the ' + m.n;
+  if(here === e.where) return 'Get out of the ' + m.n;
+  return nearDoor(e.where) ? 'Press ACT to close the hatch' : 'Go to the ' + m.n + ' hatch and close it';
+}
+function target(){
+  var e = G.ev; if(!e) return null;
+  if(KINDS[e.kind].needMask && !G.mask){ var b = null; LOCKERS.forEach(function(l){ if(!b || dist(G.p, l) < dist(G.p, b)) b = l; }); return b; }
+  if(e.kind === 'fire') return e;
+  var d = MODS[e.where].door, off = { lab: [26, 0], hab: [-26, 0], lock: [0, 26], serv: [0, -26] }[e.where];   /* just outside the hatch, on the Node side */
+  return { x: d.x + off[0], y: d.y + off[1] };
+}
+function dist(a, b){ var dx = a.x - b.x, dy = a.y - b.y; return Math.sqrt(dx * dx + dy * dy); }
+function nearDoor(k){ var d = MODS[k].door; return dist(G.p, d) < 46 && modAt(G.p.x, G.p.y) !== k; }
+function finish(ok, note){
+  var e = G.ev; if(!e) return;
+  G.log.push({ kind: KINDS[e.kind].name, where: MODS[e.where].n, s: Math.round((G.t - e.t0) * 10) / 10, ok: ok, pres: Math.round(G.pres), air: Math.round(G.air), note: note });
+  G.ev = null; G.mask = false; sirenStop();                                  /* the mask comes off between alarms: each one starts from scratch */ blip(ok ? 880 : 200, .25, ok ? 'sine' : 'square', 0, .18); if(ok) setTimeout(function(){ blip(1320, .25, 'sine', 0, .16); }, 140);
+  say(ok ? 'Contained. ' + note : note);
+  G.wait = G.round >= 3 ? 2.2 : 3.5 + Math.random() * 2.5;
+}
+function act(down){
+  G.keys.act = down;
+  var e = G.ev; if(!down || !G.run || !e) return;
+  if(e.kind !== 'fire' && nearDoor(e.where) && !(KINDS[e.kind].needMask && !G.mask)){
+    G.closed[e.where] = true; blip(120, .3, 'square', (MODS[e.where].door.x - G.p.x) / 260, .2);
+    finish(true, e.kind === 'dp' ? 'The leak is behind a closed hatch.' : 'The bad air is shut in.');
+  }
+}
+
+/* ---------- one frame ---------- */
+function step(dt){
+  G.t += dt;
+  var p = G.p, ax = (G.keys.right ? 1 : 0) - (G.keys.left ? 1 : 0), ay = (G.keys.down ? 1 : 0) - (G.keys.up ? 1 : 0);
+  G.thrust = (ax || ay) ? 1 : 0;
+  p.vx += ax * 170 * dt; p.vy += ay * 170 * dt;
+  p.vx *= Math.pow(.86, dt); p.vy *= Math.pow(.86, dt);                               /* barely any drag: you keep drifting */
+  var sp = Math.sqrt(p.vx * p.vx + p.vy * p.vy); if(sp > 150){ p.vx *= 150 / sp; p.vy *= 150 / sp; }
+  var nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
+  if(free(nx, ny)){ p.x = nx; p.y = ny; }
+  else if(free(nx, p.y)){ p.x = nx; p.vy *= -.35; }
+  else if(free(p.x, ny)){ p.y = ny; p.vx *= -.35; }
+  else { p.vx *= -.35; p.vy *= -.35; }
+  if(!G.mask) LOCKERS.forEach(function(l){ if(G.ev && KINDS[G.ev.kind].needMask && dist(p, l) < 20){ G.mask = true; blip(990, .15, 'sine', 0, .15); } });
+  var e = G.ev;
+  if(e){
+    if(e.kind === 'dp') G.pres = Math.max(0, G.pres - 2.3 * dt);
+    if(e.kind !== 'dp' && !G.mask){ var near = modAt(p.x, p.y) === e.where ? 9 : 2.2; G.air = Math.max(0, G.air - near * dt); }
+    if(e.kind === 'fire' && G.mask && dist(p, e) < 34 && G.keys.act){ G.hold += dt; if(G.hold >= 1.6) finish(true, 'The fire is out.'); } else if(e.kind === 'fire') G.hold = Math.max(0, G.hold - dt * 2);
+    if(G.pres <= 0) finish(false, 'The cabin lost its pressure before the hatch was closed.');
+    else if(G.air <= 0) finish(false, 'You breathed bad air too long without a mask.');
+    else if(G.t - e.t0 > 60) finish(false, 'Too slow: a minute passed.');
+    sirenUpdate();
+  } else if(G.run){
+    G.wait -= dt;
+    if(G.wait <= 0){ if(G.round >= 3){ end(); return; } var k = G.order[G.round], opts = ['lab', 'hab', 'lock', 'serv'].filter(function(m){ return !G.closed[m] && modAt(p.x, p.y) !== m; }); startAlarm(k, opts[Math.floor(Math.random() * opts.length)] || 'lab'); }
+  }
+  $('hNext').textContent = nextStep(); $('hPres').textContent = Math.round(G.pres) + '%'; $('hAir').textContent = Math.round(G.air) + '%';
+  $('hMask').textContent = G.mask ? 'on' : 'off'; $('hRound').textContent = Math.min(G.round, 3) + ' / 3';
+}
+function draw(){
+  g.clearRect(0, 0, W, H);
+  G.stars.forEach(function(s){ g.fillStyle = 'rgba(200,215,255,' + (.25 + .5 * Math.abs(Math.sin(G.t * .4 + s[0]))) + ')'; g.fillRect(s[0], s[1], s[2], s[2]); });
+  var e = G.ev, k;
+  for(k in MODS){ var m = MODS[k], hot = e && e.where === k;
+    g.fillStyle = '#0E1626'; g.strokeStyle = hot ? KINDS[e.kind].col : '#3A4A6B'; g.lineWidth = hot ? 3 : 2;
+    rr(m.x, m.y, m.w, m.h, 14); g.fill(); g.stroke();
+    if(hot && e.kind !== 'fire'){ g.fillStyle = e.kind === 'tox' ? 'rgba(201,167,255,' + (.16 + .08 * Math.sin(G.t * 3)) + ')' : 'rgba(255,138,61,' + (.10 + .06 * Math.sin(G.t * 5)) + ')'; rr(m.x, m.y, m.w, m.h, 14); g.fill(); }
+    g.fillStyle = '#8493B2'; g.font = '700 11px system-ui'; g.textAlign = 'center'; g.fillText(m.n.toUpperCase(), m.x + m.w / 2, m.y + 16);
+  }
+  for(k in MODS){ var d = MODS[k].door; if(!d) continue; g.lineWidth = 6; g.strokeStyle = G.closed[k] ? '#FF4D4D' : '#3DDC97'; g.beginPath();
+    if(d.vert){ g.moveTo(d.x, d.y - 14); g.lineTo(d.x, G.closed[k] ? d.y + 14 : d.y - 9); if(!G.closed[k]){ g.moveTo(d.x, d.y + 9); g.lineTo(d.x, d.y + 14); } }
+    else { g.moveTo(d.x - 14, d.y); g.lineTo(G.closed[k] ? d.x + 14 : d.x - 9, d.y); if(!G.closed[k]){ g.moveTo(d.x + 9, d.y); g.lineTo(d.x + 14, d.y); } }
+    g.stroke(); }
+  LOCKERS.forEach(function(l){ g.fillStyle = '#123524'; g.strokeStyle = '#3DDC97'; g.lineWidth = 1.5; rr(l.x - 9, l.y - 9, 18, 18, 4); g.fill(); g.stroke(); g.fillStyle = '#3DDC97'; g.font = '800 11px system-ui'; g.fillText('M', l.x, l.y + 4); });
+  if(e){ var c = KINDS[e.kind].col;
+    for(i = 0; i < 3; i++){ var ph = ((G.t * .7 + i / 3) % 1); g.strokeStyle = c; g.globalAlpha = 1 - ph; g.lineWidth = 2.5; g.beginPath(); g.arc(e.x, e.y, 8 + ph * 60, 0, 7); g.stroke(); } g.globalAlpha = 1;
+    if(e.kind === 'fire'){ for(i = 0; i < 7; i++){ g.fillStyle = i % 2 ? '#FF8A3D' : '#FF4D4D'; g.globalAlpha = .75; g.beginPath(); g.arc(e.x + Math.sin(G.t * 9 + i) * 7, e.y - Math.abs(Math.cos(G.t * 7 + i * 2)) * 12, 5 + (i % 3) * 2, 0, 7); g.fill(); } g.globalAlpha = 1;
+      if(G.hold > 0){ g.strokeStyle = '#5CD2FF'; g.lineWidth = 4; g.beginPath(); g.arc(e.x, e.y, 22, -1.57, -1.57 + 6.283 * Math.min(1, G.hold / 1.6)); g.stroke(); } }
+    if(e.kind === 'dp'){ var m2 = MODS[e.where]; for(i = 0; i < 10; i++){ var q = (G.t * 1.4 + i / 10) % 1; g.fillStyle = 'rgba(255,255,255,' + (1 - q) * .7 + ')'; g.fillRect(e.x + (i % 2 ? 1 : -1) * q * 20 + Math.sin(i) * 6, e.y - q * (e.y - m2.y + 26), 2, 2); } }
+    var tg = target(); if(tg){ g.strokeStyle = '#5CD2FF'; g.setLineDash([4, 5]); g.lineWidth = 1.2; g.beginPath(); g.moveTo(G.p.x, G.p.y); g.lineTo(tg.x, tg.y); g.stroke(); g.setLineDash([]); }
+  }
+  var p = G.p;
+  if(G.thrust){ g.fillStyle = 'rgba(92,210,255,.5)'; g.beginPath(); g.arc(p.x - p.vx * .06, p.y - p.vy * .06, 5, 0, 7); g.fill(); }
+  g.fillStyle = '#EAF2FB'; g.beginPath(); g.arc(p.x, p.y, 9, 0, 7); g.fill();
+  g.fillStyle = G.mask ? '#3DDC97' : '#1E2C4B'; g.beginPath(); g.arc(p.x, p.y, 5, 0, 7); g.fill();
+}
+function rr(x, y, w, h, r){ g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+var last = null;
+function loop(ts){ var dt = last === null ? 0 : Math.min(.05, (ts - last) / 1000); last = ts; if(G.run) step(dt); draw(); requestAnimationFrame(loop); }
+
+/* ---------- screens ---------- */
+function briefing(){
+  $('over').style.display = 'flex';
+  $('overBody').innerHTML = '<h1>Station drill</h1>'
+    + '<p>You are the flight engineer, alone in the station for this shift. You float: push off in a direction and you keep drifting until you push the other way.</p>'
+    + '<p>Three alarms will sound, one after another. You will <b>hear which side the trouble is on</b>, and the module lights up. The line at the top always says your next step.</p>'
+    + '<h2>The three alarms</h2><table>'
+    + '<tr><td><b style="color:#FF4D4D">Fire</b></td><td>Mask from a green locker, go to the fire, hold ACT.</td></tr>'
+    + '<tr><td><b style="color:#FF8A3D">Depress</b></td><td>Cabin pressure is falling. Get out of that module and close its hatch.</td></tr>'
+    + '<tr><td><b style="color:#C9A7FF">Toxic air</b></td><td>Mask first. Then close that module’s hatch from outside.</td></tr></table>'
+    + '<p class="small">Arrow keys or W A S D to push off, Space to act; or the buttons under the picture.</p>'
+    + '<div style="margin-top:12px"><button class="primary" id="go">Start the shift</button></div>';
+  $('go').addEventListener('click', start);
+}
+function start(){
+  G.p = { x: 400, y: 220, vx: 0, vy: 0 }; G.mask = false; G.pres = 100; G.air = 100; G.ev = null; G.round = 0; G.log = []; G.closed = {}; G.keys = {}; G.wait = 2.5;
+  G.order = ['fire', 'dp', 'tox'].sort(function(){ return Math.random() - .5; });
+  $('over').style.display = 'none'; G.run = true; blip(660, .12, 'sine', 0, .14); try{ cv.focus(); }catch(e){}
+}
+function end(){
+  G.run = false; sirenStop();
+  var okN = G.log.filter(function(l){ return l.ok; }).length;
+  var grade = okN === 3 && G.pres > 60 && G.air > 60 ? ['good', 'All three contained, with the cabin and your lungs in good shape.'] : okN >= 2 ? ['mid', 'Most of it contained. Look at where the time went.'] : ['bad', 'The station got the better of this shift. Run it again.'];
+  $('over').style.display = 'flex';
+  $('overBody').innerHTML = '<h1>Debrief</h1><p class="' + grade[0] + '" style="font-size:17px;font-weight:700">' + grade[1] + '</p>'
+    + '<table><tr><th>ALARM</th><th>WHERE</th><th>RESULT</th><th>TIME</th></tr>'
+    + G.log.map(function(l){ return '<tr><td>' + l.kind + '</td><td>' + l.where + '</td><td class="' + (l.ok ? 'good' : 'bad') + '">' + (l.ok ? '✓ ' : '✗ ') + l.note + '</td><td>' + l.s + ' s</td></tr>'; }).join('')
+    + '</table><p>Cabin pressure left: <b>' + Math.round(G.pres) + '%</b> · Clean air breathed: <b>' + Math.round(G.air) + '%</b></p>'
+    + '<h2>What is real and what is invented</h2>'
+    + '<p><b>Real.</b> Station crews train for three emergencies: fire, rapid depressurisation and a toxic atmosphere. Masks are kept in the modules, and a leak is isolated by closing hatches.</p>'
+    + '<p><b>Invented.</b> This station’s layout, how fast pressure and air fall, the timings, the scoring and the simplified moves, which are not a flight procedure.</p>'
+    + '<p class="small">Sources read on 15 November 2026: <a href="https://ntrs.nasa.gov/api/citations/20220019247/downloads/Emergency%20Ops%20History%20for%20SpaceOps%20Conference%202023.pdf" target="_blank" rel="noopener">Tobias and McMillan, NASA 2023</a> · <a href="https://outpost42.esa.int/blog/diario-di-bordo/single/l-239-emergency-simulations/" target="_blank" rel="noopener">ESA astronaut logbook, emergency simulations</a></p>'
+    + '<div style="margin-top:12px"><button class="primary" id="again">Another shift</button></div>';
+  $('again').addEventListener('click', start);
+}
+
+/* ---------- input ---------- */
+var KEYMAP = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right' };
+document.addEventListener('keydown', function(e){ if(KEYMAP[e.key]){ G.keys[KEYMAP[e.key]] = true; if(G.run) e.preventDefault(); } if(e.code === 'Space' && G.run){ e.preventDefault(); if(!e.repeat) act(true); } });
+document.addEventListener('keyup', function(e){ if(KEYMAP[e.key]) G.keys[KEYMAP[e.key]] = false; if(e.code === 'Space') act(false); });
+Array.prototype.forEach.call(document.querySelectorAll('#dpad button'), function(b){ var k = b.getAttribute('data-k');
+  ['pointerdown'].forEach(function(ev){ b.addEventListener(ev, function(e){ e.preventDefault(); G.keys[k] = true; }); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(function(ev){ b.addEventListener(ev, function(){ G.keys[k] = false; }); }); });
+$('bAct').addEventListener('pointerdown', function(e){ e.preventDefault(); act(true); });
+['pointerup', 'pointerleave', 'pointercancel'].forEach(function(ev){ $('bAct').addEventListener(ev, function(){ act(false); }); });
+window.__station = { G: G, MODS: MODS, target: target, nextStep: nextStep, startAlarm: startAlarm, act: act, start: start, free: free, modAt: modAt };
+briefing(); requestAnimationFrame(loop);
+</script>
+</body>
+</html>

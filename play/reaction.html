@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SYNAPSE · Reaction training</title>
+<meta name="description" content="A fictitious reaction-training scenario for an astronaut: an alertness test, then an emergency drill.">
+<style>
+:root{--bg:#070B14;--panel:#111726;--panel2:#0C1322;--line:#243049;--text:#E9EEF8;--dim:#B8C4DC;--faint:#8493B2;--accent:#5CD2FF;--ok:#3DDC97;--watch:#F0B429;--alert:#FF4D4D}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.55}
+button{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:11px 15px;min-height:46px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#06101a;font-weight:700}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button[disabled]{opacity:.45;cursor:default}
+.wrap{max-width:860px;margin:0 auto;padding:16px}
+.hud{display:flex;gap:10px 18px;flex-wrap:wrap;align-items:center;padding:9px 13px;border:1px solid var(--line);border-radius:12px;background:var(--panel);font-size:13px}
+.hud b{display:block;font-size:10px;letter-spacing:.1em;color:var(--faint);font-weight:700}
+.hud span{font-weight:700;font-variant-numeric:tabular-nums}
+.tag{margin-left:auto;font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--watch);border:1px dashed var(--watch);border-radius:7px;padding:4px 9px}
+.card{margin-top:14px;padding:18px;border:1px solid var(--line);border-radius:15px;background:var(--panel)}
+h1{font-size:22px;margin:0 0 6px}
+h2{font-size:17px;margin:16px 0 6px}
+p{margin:6px 0;color:var(--dim)}
+.small{font-size:13px;color:var(--faint)}
+#stage{position:relative;margin-top:14px;height:300px;border-radius:15px;border:1px solid var(--line);background:#050810;display:flex;align-items:center;justify-content:center;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+#stage.live{cursor:pointer}
+#lamp{width:120px;height:120px;border-radius:50%;border:3px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;color:#06101a;transition:border-color .1s}
+#lamp.on{background:var(--accent);border-color:var(--accent);box-shadow:0 0 60px rgba(92,210,255,.55)}
+#msg{position:absolute;left:0;right:0;bottom:14px;text-align:center;font-size:14px;color:var(--dim);padding:0 12px}
+@keyframes ripple{0%{transform:scale(.3);opacity:.9}100%{transform:scale(3.4);opacity:0}}
+.ring{position:absolute;width:150px;height:150px;border-radius:50%;border:3px solid currentColor;animation:ripple 1.6s ease-out infinite;pointer-events:none}
+.ring.r2{animation-delay:.53s}.ring.r3{animation-delay:1.06s}
+@media (prefers-reduced-motion: reduce){.ring{animation:none;opacity:.4}}
+#panel{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.light{border:1px solid var(--line);border-radius:10px;padding:10px 6px;text-align:center;font-size:12px;font-weight:800;letter-spacing:.06em;color:var(--faint);background:var(--panel2)}
+.light.on{color:#06101a}
+.light.on.fire{background:var(--alert);border-color:var(--alert)}
+.light.on.dp{background:#FF8A3D;border-color:#FF8A3D}
+.light.on.tox{background:#C9A7FF;border-color:#C9A7FF}
+.light.on.cw{background:var(--watch);border-color:var(--watch)}
+#acts{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px}
+#acts button{text-align:left;min-height:62px}
+#acts kbd{display:inline-block;min-width:22px;text-align:center;border:1px solid var(--line);border-radius:6px;font-size:12px;color:var(--faint);margin-right:8px;padding:1px 5px}
+table{border-collapse:collapse;width:100%;font-size:14px;margin-top:8px}
+td,th{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{font-size:11px;letter-spacing:.07em;color:var(--faint)}
+.good{color:var(--ok)}.mid{color:var(--watch)}.bad{color:var(--alert)}
+a{color:var(--accent)}
+@media(max-width:560px){#acts{grid-template-columns:1fr}#panel{grid-template-columns:repeat(2,1fr)}#stage{height:250px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p style="margin:0 0 8px;font-size:13px"><a href="../index.html">← Back to SYNAPSE</a></p>
+  <div class="hud" role="status" aria-live="polite">
+    <div><b>YOU ARE</b><span>Flight engineer</span></div>
+    <div><b>PLACE</b><span>Space station, low Earth orbit</span></div>
+    <div><b>AWAKE FOR</b><span id="hAwake">14 h</span></div>
+    <div><b>NEXT STEP</b><span id="hNext">Read the briefing</span></div>
+    <span class="tag">FICTITIOUS TRAINING</span>
+  </div>
+
+  <div class="card" id="screen"></div>
+  <div id="stageWrap" hidden>
+    <div id="stage" tabindex="0" role="button" aria-label="Reaction area. Press Space or tap when the light comes on."><div id="lamp"></div><div id="msg"></div></div>
+    <div id="panel" aria-label="Caution and warning panel" hidden>
+      <div class="light fire" data-l="fire">FIRE</div><div class="light dp" data-l="dp">DEPRESS</div><div class="light tox" data-l="tox">TOXIC ATM</div><div class="light cw" data-l="cw">CAUTION</div>
+    </div>
+    <div id="acts" hidden></div>
+  </div>
+  <p class="small" style="margin-top:14px">AI-assisted design and code. Sound follows your device volume; it starts only after your first tap.</p>
+</div>
+
+<script>
+'use strict';
+/* SYNAPSE, reaction training. One file, no dependencies, nothing stored, nothing sent.
+   Part 1 is modelled on the kind of test crews really take: watch for a light, respond as fast
+   as you can. Part 2 is a drill: an alarm sounds, the panel shows which kind, and you choose
+   the first move. The timings, the story and the wording of the moves are invented. */
+var $ = function(id){ return document.getElementById(id); };
+var S = { part: 0, rts: [], early: 0, missed: 0, trial: 0, timer: null, t0: 0, waiting: false, drill: [], cur: null, audio: null, short: true };
+var SLOW_MS = 500;                       /* a response slower than this is counted as slow: a threshold chosen for this drill */
+var N_LIGHTS = 8, N_ALARMS = 7;
+
+function tone(seq){
+  try{
+    var AC = window.AudioContext || window.webkitAudioContext; if(!AC) return;
+    S.audio = S.audio || new AC(); var ctx = S.audio, t = ctx.currentTime + 0.02;
+    if(ctx.state === 'suspended' && ctx.resume) ctx.resume();
+    seq.forEach(function(n){
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = n[3] || 'sine'; o.frequency.setValueAtTime(n[0], t + n[1]);
+      if(n[4]) o.frequency.linearRampToValueAtTime(n[4], t + n[1] + n[2]);
+      g.gain.setValueAtTime(0.0001, t + n[1]); g.gain.exponentialRampToValueAtTime(0.16, t + n[1] + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + n[1] + n[2]);
+      o.connect(g); g.connect(ctx.destination); o.start(t + n[1]); o.stop(t + n[1] + n[2] + 0.03);
+    });
+  }catch(e){}
+}
+var SOUND = {
+  go: [[880, 0, .12]],
+  emergency: [[520, 0, .5, 'sawtooth', 940], [520, .55, .5, 'sawtooth', 940], [520, 1.1, .5, 'sawtooth', 940]],   /* rising sweep, three times */
+  caution: [[660, 0, .18], [660, .3, .18]],
+  right: [[660, 0, .1], [990, .1, .16]],
+  wrong: [[220, 0, .3, 'square']]
+};
+function say(text){
+  try{ if(!('speechSynthesis' in window)) return; window.speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(text); u.lang = 'en-US'; u.rate = 1.02; window.speechSynthesis.speak(u); }catch(e){}
+}
+function next(t){ $('hNext').textContent = t; }
+function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; }); }
+
+/* ---------- briefing ---------- */
+function briefing(){
+  S.part = 0; next('Read the briefing, then start');
+  $('stageWrap').hidden = true;
+  $('screen').innerHTML = '<h1>Reaction training</h1>'
+    + '<p>You are a flight engineer on the space station. It has been a long day: fourteen hours awake, a task that ran late, and a sleep period cut short last night. Before the next critical task, the plan asks for two things.</p>'
+    + '<h2>1 · Alertness check</h2><p>A light comes on at moments you cannot predict. Respond the instant you see it. It measures how fast and how steadily you react, which is what tiredness takes first.</p>'
+    + '<h2>2 · Emergency drill</h2><p>Tones sound without warning. Some are only cautions. Some are emergencies: fire, loss of cabin pressure, or a toxic atmosphere. Look at the panel, then choose your first move.</p>'
+    + '<p class="small">Use a tap, a click, or the keyboard: Space for the light, keys 1 to 4 for the moves. Nothing is recorded or sent.</p>'
+    + '<div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:14px"><button class="primary" id="go">Start the alertness check</button>'
+    + '<label class="small" style="display:inline-flex;align-items:center;gap:7px"><input type="checkbox" id="long"> Full length (about 3 minutes, as crews take it) instead of the short version</label></div>';
+  $('go').addEventListener('click', function(){ S.short = !$('long').checked; startLights(); });
+}
+
+/* ---------- part 1: the light ---------- */
+function startLights(){
+  S.part = 1; S.rts = []; S.early = 0; S.missed = 0; S.trial = 0; S.tEnd = Date.now() + 180000;
+  $('stageWrap').hidden = false; $('panel').hidden = true; $('acts').hidden = true; $('stage').classList.add('live');
+  $('screen').innerHTML = '<h1>1 · Alertness check</h1><p>Keep your eyes on the circle. The moment it lights, tap it or press Space. Do not guess: responding before the light counts against you.</p>';
+  next('Watch the circle. Respond when it lights.');
+  tone(SOUND.go); arm();
+  try{ $('stage').focus(); }catch(e){}
+}
+function arm(){
+  var done = S.short ? S.trial >= N_LIGHTS : Date.now() >= S.tEnd;
+  if(done){ endLights(); return; }
+  S.waiting = false; $('lamp').className = ''; $('lamp').textContent = '';
+  $('msg').textContent = S.short ? 'Light ' + (S.trial + 1) + ' of ' + N_LIGHTS + '. Wait for it.' : 'Wait for it.';
+  S.timer = setTimeout(function(){
+    S.waiting = true; S.t0 = performance.now(); $('lamp').className = 'on';
+    S.timer = setTimeout(function(){ if(S.waiting){ S.waiting = false; S.missed++; S.trial++; $('msg').textContent = 'Missed. No response in 3 seconds.'; $('lamp').className = ''; S.timer = setTimeout(arm, 900); } }, 3000);
+  }, 2000 + Math.random() * 3500);
+}
+function hitLight(){
+  if(S.part !== 1) return;
+  if(!S.waiting){
+    if($('lamp').textContent !== '') return;             /* still showing the last time */
+    clearTimeout(S.timer); S.early++; $('msg').textContent = 'Too early. Wait for the light.'; tone(SOUND.wrong); S.timer = setTimeout(arm, 1100); return;
+  }
+  clearTimeout(S.timer);
+  var rt = Math.round(performance.now() - S.t0);
+  S.waiting = false; S.rts.push(rt); S.trial++;
+  $('lamp').textContent = rt; $('msg').textContent = rt + ' milliseconds' + (rt > SLOW_MS ? ' · slow' : '');
+  S.timer = setTimeout(arm, 1000);
+}
+function lightStats(){
+  var a = S.rts.slice().sort(function(x, y){ return x - y; }), n = a.length;
+  var mean = n ? Math.round(a.reduce(function(p, q){ return p + q; }, 0) / n) : 0;
+  return { n: n, mean: mean, median: n ? a[Math.floor(n / 2)] : 0, slow: a.filter(function(x){ return x > SLOW_MS; }).length, early: S.early, missed: S.missed };
+}
+function endLights(){
+  clearTimeout(S.timer); S.part = 1.5; $('stage').classList.remove('live'); $('stageWrap').hidden = true;
+  var st = lightStats(), steady = st.slow + st.missed + st.early;
+  var verdict = st.n === 0 ? ['bad', 'No response was recorded.'] : steady === 0 && st.median <= 350 ? ['good', 'Fast and steady.'] : steady <= 1 ? ['mid', 'Mostly steady, with one slip.'] : ['bad', 'Unsteady: slow responses, misses or early presses.'];
+  $('screen').innerHTML = '<h1>Alertness check: your result</h1>'
+    + '<p class="' + verdict[0] + '" style="font-size:18px;font-weight:700">' + verdict[1] + '</p>'
+    + '<table><tr><th>MEASURE</th><th>YOU</th></tr>'
+    + '<tr><td>Typical reaction time (median)</td><td>' + st.median + ' ms</td></tr><tr><td>Average reaction time</td><td>' + st.mean + ' ms</td></tr>'
+    + '<tr><td>Slow responses (over ' + SLOW_MS + ' ms)</td><td>' + st.slow + '</td></tr><tr><td>Missed lights</td><td>' + st.missed + '</td></tr><tr><td>Early presses</td><td>' + st.early + '</td></tr></table>'
+    + '<p>' + (verdict[0] === 'good' ? 'You are fit for the drill.' : 'On board, a result like this is a caution sign: tell the ground, and do not stack a critical task on top of it if it can wait. For training, carry on to the drill and see what it does to your choices.') + '</p>'
+    + '<p class="small">A touch screen and a keyboard add their own delay, so compare your runs with each other, not with anyone else.</p>'
+    + '<div style="margin-top:12px"><button class="primary" id="go2">Start the emergency drill</button></div>';
+  next('Read your result, then start the drill');
+  say(verdict[1] + ' Typical reaction time, ' + st.median + ' milliseconds.');
+  $('go2').addEventListener('click', startDrill);
+}
+
+/* ---------- part 2: the drill ---------- */
+var KINDS = {
+  fire: { light: 'fire', name: 'Fire', emergency: true, voice: 'Emergency. Fire.', right: 'mask_find',
+          why: 'Protect your breathing first, tell the crew, then find where it is.' },
+  dp:   { light: 'dp', name: 'Rapid depressurisation', emergency: true, voice: 'Emergency. Rapid depress.', right: 'pressure_hatch',
+          why: 'Know how fast the pressure is falling, then put a closed hatch between you and the leak.' },
+  tox:  { light: 'tox', name: 'Toxic atmosphere', emergency: true, voice: 'Emergency. Toxic atmosphere.', right: 'mask_leave',
+          why: 'Mask on, get away from the contaminated air and shut it in behind you.' },
+  cw:   { light: 'cw', name: 'Caution', emergency: false, voice: 'Caution.', right: 'ack',
+          why: 'A caution is not an emergency. Read what it says before doing anything else.' }
+};
+var MOVES = [
+  { id: 'mask_find',      t: 'Mask on, warn the crew, find the source' },
+  { id: 'pressure_hatch', t: 'Check the pressure, close hatches to isolate the leak' },
+  { id: 'mask_leave',     t: 'Mask on, leave the module, close the hatch behind you' },
+  { id: 'ack',            t: 'Acknowledge the tone and read the message' }
+];
+function startDrill(){
+  S.part = 2; S.drill = []; S.cur = null;
+  var seq = ['cw', 'fire', 'dp', 'tox', 'cw'];
+  while(seq.length < N_ALARMS) seq.push(['fire', 'dp', 'tox'][Math.floor(Math.random() * 3)]);
+  for(var i = seq.length - 1; i > 0; i--){ var j = Math.floor(Math.random() * (i + 1)), x = seq[i]; seq[i] = seq[j]; seq[j] = x; }
+  S.queue = seq;
+  $('stageWrap').hidden = false; $('panel').hidden = false; $('acts').hidden = false; $('lamp').className = ''; $('lamp').textContent = '';
+  $('acts').innerHTML = MOVES.map(function(m, i){ return '<button type="button" data-m="' + m.id + '" disabled><kbd>' + (i + 1) + '</kbd>' + esc(m.t) + '</button>'; }).join('');
+  Array.prototype.forEach.call($('acts').querySelectorAll('button'), function(b){ b.addEventListener('click', function(){ choose(b.getAttribute('data-m')); }); });
+  $('screen').innerHTML = '<h1>2 · Emergency drill</h1><p>You are working at the robotics station. Carry on until a tone sounds. Then look at the panel under the screen and choose your first move.</p>';
+  next('Keep working. Wait for a tone.'); quiet();
+}
+function quiet(){
+  Array.prototype.forEach.call(document.querySelectorAll('.light'), function(l){ l.classList.remove('on'); });
+  Array.prototype.forEach.call($('acts').querySelectorAll('button'), function(b){ b.disabled = true; });
+  var st = $('stage'); Array.prototype.forEach.call(st.querySelectorAll('.ring'), function(r){ r.remove(); });
+  if(!S.queue.length){ S.timer = setTimeout(endDrill, 900); return; }
+  $('msg').textContent = 'Alarm ' + (N_ALARMS - S.queue.length + 1) + ' of ' + N_ALARMS + ' to come. Keep working.';
+  S.timer = setTimeout(fire, 2500 + Math.random() * 4000);
+}
+function fire(){
+  var k = KINDS[S.queue.shift()];
+  S.cur = { k: k, t0: performance.now() };
+  document.querySelector('.light[data-l="' + k.light + '"]').classList.add('on');
+  var st = $('stage'), col = k.light === 'fire' ? 'var(--alert)' : k.light === 'dp' ? '#FF8A3D' : k.light === 'tox' ? '#C9A7FF' : 'var(--watch)';
+  [1, 2, 3].forEach(function(n){ var r = document.createElement('div'); r.className = 'ring r' + n; r.style.color = col; st.appendChild(r); });
+  tone(k.emergency ? SOUND.emergency : SOUND.caution); say(k.voice);
+  $('msg').textContent = 'Tone. Read the panel and choose.'; next('Read the panel. Choose your first move.');
+  Array.prototype.forEach.call($('acts').querySelectorAll('button'), function(b){ b.disabled = false; });
+  S.timer = setTimeout(function(){ if(S.cur) choose(null); }, 8000);
+}
+function choose(id){
+  if(S.part !== 2 || !S.cur) return;
+  clearTimeout(S.timer);
+  var c = S.cur, ms = Math.round(performance.now() - c.t0), ok = id === c.k.right; S.cur = null;
+  S.drill.push({ kind: c.k.name, emergency: c.k.emergency, ok: ok, ms: id ? ms : null, picked: id });
+  tone(ok ? SOUND.right : SOUND.wrong);
+  var line = (ok ? 'Right, in ' + (ms / 1000).toFixed(1) + ' seconds. ' : id ? 'Not that. ' : 'No move in eight seconds. ') + c.k.why;
+  $('msg').textContent = line; say(ok ? 'Right.' : c.k.why); next(ok ? 'Good. Back to work.' : 'Note the right move. Back to work.');
+  Array.prototype.forEach.call($('acts').querySelectorAll('button'), function(b){
+    b.disabled = true; b.style.borderColor = b.getAttribute('data-m') === c.k.right ? 'var(--ok)' : (b.getAttribute('data-m') === id ? 'var(--alert)' : '');
+  });
+  S.timer = setTimeout(function(){ Array.prototype.forEach.call($('acts').querySelectorAll('button'), function(b){ b.style.borderColor = ''; }); quiet(); }, 2600);
+}
+function endDrill(){
+  S.part = 3; $('stageWrap').hidden = true; next('Read the debrief');
+  var d = S.drill, right = d.filter(function(x){ return x.ok; }), em = d.filter(function(x){ return x.emergency; }), emRight = em.filter(function(x){ return x.ok; });
+  var over = d.filter(function(x){ return !x.emergency && x.picked && !x.ok; }).length;
+  var times = right.map(function(x){ return x.ms; }).sort(function(a, b){ return a - b; }), med = times.length ? times[Math.floor(times.length / 2)] : null;
+  var st = lightStats();
+  var grade = emRight.length === em.length && over === 0 ? ['good', 'Every emergency met with the right first move, and no caution treated as one.']
+            : emRight.length >= em.length - 1 ? ['mid', 'Nearly. One alarm was answered with the wrong move or too late.'] : ['bad', 'Several alarms were answered with the wrong move or too late. Run it again.'];
+  $('screen').innerHTML = '<h1>Debrief</h1><p class="' + grade[0] + '" style="font-size:18px;font-weight:700">' + grade[1] + '</p>'
+    + '<table><tr><th>MEASURE</th><th>YOU</th></tr>'
+    + '<tr><td>Emergencies answered with the right first move</td><td>' + emRight.length + ' of ' + em.length + '</td></tr>'
+    + '<tr><td>Cautions treated as emergencies</td><td>' + over + '</td></tr>'
+    + '<tr><td>Typical time to a right choice</td><td>' + (med === null ? 'none' : (med / 1000).toFixed(1) + ' s') + '</td></tr>'
+    + '<tr><td>Alertness check, typical reaction time</td><td>' + st.median + ' ms, ' + (st.slow + st.missed) + ' slow or missed</td></tr></table>'
+    + '<h2>Alarm by alarm</h2><table><tr><th>ALARM</th><th>YOUR MOVE</th><th>TIME</th></tr>'
+    + d.map(function(x){ var m = MOVES.filter(function(q){ return q.id === x.picked; })[0];
+        return '<tr><td>' + esc(x.kind) + '</td><td class="' + (x.ok ? 'good' : 'bad') + '">' + (x.ok ? '✓ ' : '✗ ') + esc(m ? m.t : 'No move') + '</td><td>' + (x.ms === null ? 'none' : (x.ms / 1000).toFixed(1) + ' s') + '</td></tr>'; }).join('') + '</table>'
+    + '<h2>What is real and what is invented</h2>'
+    + '<p><b>Real.</b> Station crews take a brief reaction test of this kind, in which a light appears and the response is timed; it is used because slower and less steady reactions are an early sign of fatigue. Station alarms come in classes, cautions being the mildest and emergencies the most serious, and crews train for fire, rapid depressurisation and a toxic atmosphere.</p>'
+    + '<p><b>Invented.</b> The story, the number and timing of lights and alarms, the ' + SLOW_MS + ' ms line for a slow response, the scoring, and the wording of the four moves, which are simplified for training and are not a flight procedure.</p>'
+    + '<p class="small">Sources read on 15 November 2026: '
+    + '<a href="https://spinoff.nasa.gov/Spinoff2013/hm_1.html" target="_blank" rel="noopener">NASA Spinoff 2013, the reaction self-test on the station</a> · '
+    + '<a href="https://ntrs.nasa.gov/api/citations/20220019247/downloads/Emergency%20Ops%20History%20for%20SpaceOps%20Conference%202023.pdf" target="_blank" rel="noopener">Tobias and McMillan, emergency response on the station, NASA 2023</a> · '
+    + '<a href="https://outpost42.esa.int/blog/diario-di-bordo/single/l-239-emergency-simulations/" target="_blank" rel="noopener">ESA astronaut logbook, emergency simulations</a> · '
+    + '<a href="https://www.davidson.edu/news/2021/03/17/astronauts-are-their-own-and-only-first-responders" target="_blank" rel="noopener">Davidson College, interview with a NASA training officer</a></p>'
+    + '<div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:14px"><button class="primary" id="again">Run it again</button><button id="drillOnly">Drill only</button></div>';
+  say(grade[1]);
+  $('again').addEventListener('click', briefing); $('drillOnly').addEventListener('click', startDrill);
+}
+
+/* ---------- input ---------- */
+$('stage').addEventListener('pointerdown', function(e){ e.preventDefault(); hitLight(); });
+document.addEventListener('keydown', function(e){
+  if(e.repeat) return;
+  if(S.part === 1 && (e.code === 'Space' || e.key === ' ' || e.key === 'Enter')){ e.preventDefault(); hitLight(); }
+  if(S.part === 2 && S.cur && /^[1-4]$/.test(e.key)){ e.preventDefault(); choose(MOVES[+e.key - 1].id); }
+});
+window.__reaction = { S: S, hitLight: hitLight, choose: choose, startLights: startLights, startDrill: startDrill, KINDS: KINDS, lightStats: lightStats };
+briefing();
+</script>
+</body>
+</html>
